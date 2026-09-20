@@ -32,6 +32,12 @@
     .aicw-msg { margin-bottom: 10px; line-height: 1.4; max-width: 85%; padding: 8px 12px; border-radius: 10px; }
     .aicw-msg.aicw-user { background: ${accentColor}; color: #fff; margin-left: auto; }
     .aicw-msg.aicw-assistant { background: #eceef2; color: #1a1a1a; }
+    .aicw-msg p { margin: 0 0 8px; }
+    .aicw-msg p:last-child { margin-bottom: 0; }
+    .aicw-msg ul, .aicw-msg ol { margin: 0 0 8px; padding-left: 20px; }
+    .aicw-msg ul:last-child, .aicw-msg ol:last-child { margin-bottom: 0; }
+    .aicw-msg li { margin-bottom: 2px; }
+    .aicw-msg strong { font-weight: 700; }
     .aicw-input-row { display: flex; border-top: 1px solid #e5e7eb; }
     .aicw-input {
       flex: 1; border: none; padding: 10px 12px; font-size: 14px; outline: none;
@@ -70,10 +76,38 @@
     return div.innerHTML;
   }
 
+  // Minimal, safe subset of markdown: bold, bullet/numbered lists, paragraphs.
+  // Input is escaped first so no raw HTML from the model or user is ever injected.
+  function renderLiteMarkdown(text) {
+    const escaped = escapeHtml(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+
+    const blocks = escaped.split(/\n\s*\n/);
+    return blocks
+      .map((block) => {
+        const lines = block.split("\n").filter((l) => l.trim() !== "");
+        if (lines.length === 0) return "";
+
+        if (lines.every((l) => /^[-*]\s+/.test(l.trim()))) {
+          const items = lines.map((l) => `<li>${l.trim().replace(/^[-*]\s+/, "")}</li>`).join("");
+          return `<ul>${items}</ul>`;
+        }
+        if (lines.every((l) => /^\d+[.)]\s+/.test(l.trim()))) {
+          const items = lines.map((l) => `<li>${l.trim().replace(/^\d+[.)]\s+/, "")}</li>`).join("");
+          return `<ol>${items}</ol>`;
+        }
+        return `<p>${lines.join("<br>")}</p>`;
+      })
+      .join("");
+  }
+
   function appendMessage(role, text) {
     const div = document.createElement("div");
     div.className = `aicw-msg aicw-${role}`;
-    div.textContent = text;
+    if (role === "assistant") {
+      div.innerHTML = renderLiteMarkdown(text);
+    } else {
+      div.textContent = text;
+    }
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
