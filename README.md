@@ -28,12 +28,14 @@ Two places to configure the assistant for a specific business:
 
 ## 4. Embed on a client's website
 
-Once deployed (step 5), give the client this snippet to paste before `</body>`:
+Live deployment: https://ai-chatbot-widget-wg71.onrender.com
+
+Give the client this snippet to paste before `</body>`:
 
 ```html
 <script
-  src="https://YOUR-DEPLOYED-URL/widget.js"
-  data-api-base="https://YOUR-DEPLOYED-URL"
+  src="https://ai-chatbot-widget-wg71.onrender.com/widget.js"
+  data-api-base="https://ai-chatbot-widget-wg71.onrender.com"
   data-title="Their Business Name"
   data-greeting="Hi! How can I help you today?"
   data-color="#4f46e5"
@@ -51,6 +53,10 @@ Any Node-friendly free host works, e.g. **Render** (render.com):
 5. Deploy — Render gives you a public URL to use as `YOUR-DEPLOYED-URL` above.
 
 Railway.app and Fly.io work the same way if you prefer.
+
+Note: on Render's free tier, the service spins down after ~15 minutes idle — the first
+request after idling takes 30-60s to wake up. Fine for demos; upgrade to a paid instance
+once you have a real client relying on it.
 
 ## Notes on the free tier
 
