@@ -5,8 +5,16 @@
   const greeting =
     scriptTag.getAttribute("data-greeting") || "Hi! How can I help you today?";
   const accentColor = scriptTag.getAttribute("data-color") || "#4f46e5";
+  const suggestions = (scriptTag.getAttribute("data-suggestions") || "Hours,Book an appointment,Do you take insurance?")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   const history = [];
+
+  // Wake a sleeping free-tier server as soon as the page loads, before the
+  // visitor opens the chat, so the first real message doesn't hit a cold start.
+  fetch(`${apiBase}/health`).catch(() => {});
 
   const style = document.createElement("style");
   style.textContent = `
@@ -17,10 +25,16 @@
       z-index: 999999; display: flex; align-items: center; justify-content: center;
     }
     .aicw-panel {
-      position: fixed; bottom: 90px; right: 20px; width: 320px; max-height: 460px;
+      position: fixed; bottom: 90px; right: 20px;
+      width: 320px; max-width: calc(100vw - 32px);
+      max-height: 460px; height: min(460px, calc(100vh - 120px));
       background: #fff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);
       display: none; flex-direction: column; overflow: hidden; z-index: 999999;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (max-width: 420px) {
+      .aicw-panel { right: 16px; left: 16px; width: auto; bottom: 84px; }
+      .aicw-bubble { bottom: 16px; right: 16px; }
     }
     .aicw-panel.aicw-open { display: flex; }
     .aicw-header {
@@ -44,6 +58,23 @@
     }
     .aicw-send { border: none; background: ${accentColor}; color: #fff; padding: 0 16px; cursor: pointer; }
     .aicw-send:disabled { opacity: 0.5; cursor: default; }
+    .aicw-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
+    .aicw-suggestion {
+      border: 1px solid ${accentColor}; color: ${accentColor}; background: #fff;
+      border-radius: 14px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+    }
+    .aicw-suggestion:hover { background: ${accentColor}; color: #fff; }
+    .aicw-typing { display: inline-flex; gap: 4px; align-items: center; padding: 4px 0; }
+    .aicw-typing span {
+      width: 6px; height: 6px; border-radius: 50%; background: #9aa0ab;
+      animation: aicw-bounce 1.2s infinite ease-in-out;
+    }
+    .aicw-typing span:nth-child(2) { animation-delay: 0.15s; }
+    .aicw-typing span:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes aicw-bounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
   `;
   document.head.appendChild(style);
 
@@ -57,6 +88,7 @@
   panel.innerHTML = `
     <div class="aicw-header">${escapeHtml(title)}</div>
     <div class="aicw-messages" id="aicw-messages"></div>
+    <div class="aicw-suggestions" id="aicw-suggestions"></div>
     <div class="aicw-input-row">
       <input class="aicw-input" id="aicw-input" type="text" placeholder="Type a message..." />
       <button class="aicw-send" id="aicw-send">Send</button>
@@ -67,6 +99,7 @@
   document.body.appendChild(bubble);
 
   const messagesEl = panel.querySelector("#aicw-messages");
+  const suggestionsEl = panel.querySelector("#aicw-suggestions");
   const inputEl = panel.querySelector("#aicw-input");
   const sendBtn = panel.querySelector("#aicw-send");
 
@@ -112,22 +145,50 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  function showTyping() {
+    const div = document.createElement("div");
+    div.className = "aicw-msg aicw-assistant";
+    div.id = "aicw-typing";
+    div.innerHTML = '<span class="aicw-typing"><span></span><span></span><span></span></span>';
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function hideTyping() {
+    const el = messagesEl.querySelector("#aicw-typing");
+    if (el) el.remove();
+  }
+
+  function renderSuggestions() {
+    suggestionsEl.innerHTML = "";
+    suggestions.forEach((s) => {
+      const chip = document.createElement("button");
+      chip.className = "aicw-suggestion";
+      chip.textContent = s;
+      chip.addEventListener("click", () => sendMessage(s));
+      suggestionsEl.appendChild(chip);
+    });
+  }
+
   let opened = false;
   bubble.addEventListener("click", () => {
     opened = !opened;
     panel.classList.toggle("aicw-open", opened);
     if (opened && messagesEl.childElementCount === 0) {
       appendMessage("assistant", greeting);
+      renderSuggestions();
     }
   });
 
-  async function sendMessage() {
-    const text = inputEl.value.trim();
+  async function sendMessage(overrideText) {
+    const text = (overrideText ?? inputEl.value).trim();
     if (!text) return;
 
     appendMessage("user", text);
     inputEl.value = "";
     sendBtn.disabled = true;
+    suggestionsEl.innerHTML = "";
+    showTyping();
 
     try {
       const res = await fetch(`${apiBase}/api/chat`, {
@@ -136,6 +197,7 @@
         body: JSON.stringify({ message: text, history }),
       });
       const data = await res.json();
+      hideTyping();
 
       if (!res.ok) {
         appendMessage("assistant", data.error || "Something went wrong.");
@@ -146,13 +208,14 @@
       history.push({ role: "assistant", content: data.reply });
       appendMessage("assistant", data.reply);
     } catch (err) {
+      hideTyping();
       appendMessage("assistant", "Network error. Please try again.");
     } finally {
       sendBtn.disabled = false;
     }
   }
 
-  sendBtn.addEventListener("click", sendMessage);
+  sendBtn.addEventListener("click", () => sendMessage());
   inputEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter") sendMessage();
   });
